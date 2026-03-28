@@ -624,7 +624,6 @@ kubectl get pvc -n kafka-platform
 
 ## Future Improvements
 
-- [ ] Add Schema Registry with Avro serialization
 - [ ] Enable TLS encryption between clients and brokers
 - [ ] Add SASL authentication
 - [ ] Implement Cruise Control for auto-rebalancing
@@ -635,4 +634,4 @@ kubectl get pvc -n kafka-platform
 
 ## License
 
-Internal Use Only
+For Learning Use Only
