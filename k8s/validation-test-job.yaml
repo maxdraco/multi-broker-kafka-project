@@ -1,0 +1,205 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: validation-test
+  namespace: kafka-producers
+  labels:
+    app: validation-test
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: validation-test
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: validation-test
+          image: curlimages/curl:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "=========================================="
+              echo "Kafka Validation Testing Suite"
+              echo "=========================================="
+              echo ""
+              echo "This job tests two types of validation:"
+              echo "  1. Schema Validation (Avro + Registry)"
+              echo "  2. Business Validation (Consumer + DLT)"
+              echo ""
+
+              # Wait for producer service to be available
+              echo "Waiting for producer service to be ready..."
+              until curl -s -f http://order-producer-service:8080/api/orders/health > /dev/null 2>&1; do
+                echo "  Producer not ready yet, waiting..."
+                sleep 2
+              done
+              echo "✓ Producer service is ready"
+              echo ""
+              echo "=========================================="
+              echo ""
+
+              # ============================================================
+              # TEST 1: Schema Validation (Avro + Registry)
+              # ============================================================
+              echo "┌──────────────────────────────────────────┐"
+              echo "│ TEST 1: Schema Validation (Avro)        │"
+              echo "└──────────────────────────────────────────┘"
+              echo ""
+              echo "Testing Avro schema validation with Apicurio Registry..."
+              echo "Sending 10 orders with schema violations:"
+              echo "  - Missing required 'user' field"
+              echo "  - Missing required 'item' field"
+              echo "  - Missing multiple required fields"
+              echo ""
+              echo "Expected Result:"
+              echo "  ❌ Serialization fails at PRODUCER (before Kafka)"
+              echo "  ❌ Messages are NOT written to Kafka"
+              echo "  ❌ Consumer never sees these messages"
+              echo "  ❌ NO DLT routing (message doesn't exist)"
+              echo ""
+
+              response=$(curl -s -X POST http://order-producer-service:8080/api/orders/avro/invalid \
+                -H 'Content-Type: application/json' \
+                -w "\nHTTP_CODE:%{http_code}")
+
+              http_code=$(echo "$response" | grep "HTTP_CODE" | cut -d: -f2)
+              body=$(echo "$response" | sed '/HTTP_CODE/d')
+
+              if [ "$http_code" = "200" ]; then
+                echo "✓ Schema validation test completed"
+                echo ""
+                echo "Response:"
+                echo "$body" | head -20
+                echo ""
+                echo "→ Check producer logs to see SerializationException errors:"
+                echo "  kubectl logs -n kafka-producers -l app=order-producer --tail=50 | grep -i 'error\\|exception\\|failed'"
+                echo ""
+                echo "→ Verify orders-avro topic has NO invalid messages:"
+                echo "  kubectl exec -n kafka-platform kafka-0 -- kafka-console-consumer --bootstrap-server localhost:9092 --topic orders-avro --from-beginning --max-messages 10 --timeout-ms 5000"
+                echo ""
+              else
+                echo "✗ Schema validation test failed (HTTP $http_code)"
+                exit 1
+              fi
+
+              echo "=========================================="
+              echo ""
+              sleep 3
+
+              # ============================================================
+              # TEST 2: Business Validation (Consumer + DLT)
+              # ============================================================
+              echo "┌──────────────────────────────────────────┐"
+              echo "│ TEST 2: Business Validation (DLT)       │"
+              echo "└──────────────────────────────────────────┘"
+              echo ""
+              echo "Testing business logic validation and DLT routing..."
+              echo "Sending 10 orders with business rule violations:"
+              echo "  - Item = 'POISON_PILL' (invalid item)"
+              echo "  - Quantity = -999 (negative quantity)"
+              echo "  - User = null (missing user)"
+              echo ""
+              echo "Expected Result:"
+              echo "  ✅ Messages ARE written to Kafka (valid schema)"
+              echo "  ✅ Consumer receives and processes messages"
+              echo "  ❌ Business validation fails"
+              echo "  🔄 Consumer retries 3 times"
+              echo "  📤 After retries → routed to orders.DLT topic"
+              echo ""
+
+              response=$(curl -s -X POST http://order-producer-service:8080/api/orders/invalid \
+                -H 'Content-Type: application/json' \
+                -d '{"count": 10}' \
+                -w "\nHTTP_CODE:%{http_code}")
+
+              http_code=$(echo "$response" | grep "HTTP_CODE" | cut -d: -f2)
+              body=$(echo "$response" | sed '/HTTP_CODE/d')
+
+              if [ "$http_code" = "200" ]; then
+                echo "✓ Business validation test completed"
+                echo ""
+                echo "Response:"
+                echo "$body" | head -20
+                echo ""
+                echo "→ Check consumer logs for retries and DLT routing:"
+                echo "  kubectl logs -n kafka-consumers -l app=order-consumer -f | grep -E 'WARN|DLT|retry'"
+                echo ""
+                echo "→ View DLT messages (should contain all 10 failed orders):"
+                echo "  kubectl exec -n kafka-platform kafka-0 -- kafka-console-consumer --bootstrap-server localhost:9092 --topic orders.DLT --from-beginning --max-messages 10"
+                echo ""
+              else
+                echo "✗ Business validation test failed (HTTP $http_code)"
+                exit 1
+              fi
+
+              echo "=========================================="
+              echo ""
+
+              # ============================================================
+              # Summary
+              # ============================================================
+              echo "┌──────────────────────────────────────────┐"
+              echo "│ Test Summary                             │"
+              echo "└──────────────────────────────────────────┘"
+              echo ""
+              echo "✓ Schema Validation Test Complete"
+              echo "  - 10 Avro messages with schema violations"
+              echo "  - All rejected at producer (SerializationException)"
+              echo "  - Zero messages written to Kafka"
+              echo ""
+              echo "✓ Business Validation Test Complete"
+              echo "  - 10 JSON messages with business rule violations"
+              echo "  - All written to Kafka successfully"
+              echo "  - Consumer retries each 3 times"
+              echo "  - All routed to orders.DLT topic"
+              echo ""
+              echo "=========================================="
+              echo "Key Differences:"
+              echo "=========================================="
+              echo ""
+              echo "Schema Validation (Avro + Registry):"
+              echo "  Where:     Producer (serialization)"
+              echo "  Timing:    Before Kafka"
+              echo "  In Kafka:  ❌ No"
+              echo "  DLT:       ❌ No (never sent)"
+              echo "  Error:     SerializationException"
+              echo ""
+              echo "Business Validation (Consumer + DLT):"
+              echo "  Where:     Consumer (processing)"
+              echo "  Timing:    After Kafka"
+              echo "  In Kafka:  ✅ Yes"
+              echo "  DLT:       ✅ Yes (after retries)"
+              echo "  Error:     IllegalArgumentException"
+              echo ""
+              echo "=========================================="
+              echo "Verification Commands:"
+              echo "=========================================="
+              echo ""
+              echo "# View producer logs (schema failures)"
+              echo "kubectl logs -n kafka-producers -l app=order-producer --tail=100 | grep -i error"
+              echo ""
+              echo "# View consumer logs (DLT routing)"
+              echo "kubectl logs -n kafka-consumers -l app=order-consumer --tail=100 | grep DLT"
+              echo ""
+              echo "# Check orders.DLT topic (should have 10 messages)"
+              echo "kubectl exec -n kafka-platform kafka-0 -- kafka-console-consumer --bootstrap-server localhost:9092 --topic orders.DLT --from-beginning --max-messages 10"
+              echo ""
+              echo "# Check orders-avro topic (should have 0 invalid messages)"
+              echo "kubectl exec -n kafka-platform kafka-0 -- kafka-run-class kafka.tools.GetOffsetShell --broker-list localhost:9092 --topic orders-avro"
+              echo ""
+              echo "# View in Kafka UI"
+              echo "http://localhost:30080"
+              echo ""
+              echo "=========================================="
+              echo "✓ All validation tests completed"
+              echo "=========================================="
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"

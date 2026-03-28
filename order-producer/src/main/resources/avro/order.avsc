@@ -1,0 +1,33 @@
+{
+  "type": "record",
+  "namespace": "com.kafka.platform.avro",
+  "name": "Order",
+  "fields": [
+    {
+      "name": "orderId",
+      "type": "string",
+      "doc": "Unique order identifier"
+    },
+    {
+      "name": "user",
+      "type": "string",
+      "doc": "Username who placed the order"
+    },
+    {
+      "name": "item",
+      "type": "string",
+      "doc": "Item being ordered"
+    },
+    {
+      "name": "quantity",
+      "type": "int",
+      "doc": "Quantity of items ordered"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "default": 0,
+      "doc": "Order timestamp in milliseconds since epoch"
+    }
+  ]
+}

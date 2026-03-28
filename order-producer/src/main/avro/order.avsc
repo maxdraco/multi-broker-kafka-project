@@ -1,0 +1,34 @@
+{
+  "type": "record",
+  "name": "Order",
+  "namespace": "com.kafka.platform.avro",
+  "doc": "Order event schema with strict validation",
+  "fields": [
+    {
+      "name": "orderId",
+      "type": "string",
+      "doc": "Unique order identifier (UUID)"
+    },
+    {
+      "name": "user",
+      "type": "string",
+      "doc": "Username who placed the order"
+    },
+    {
+      "name": "item",
+      "type": "string",
+      "doc": "Item name"
+    },
+    {
+      "name": "quantity",
+      "type": "int",
+      "doc": "Quantity ordered (must be positive)",
+      "default": 1
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Order timestamp in milliseconds since epoch"
+    }
+  ]
+}

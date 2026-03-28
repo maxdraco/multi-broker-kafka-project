@@ -1,0 +1,26 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kafka-platform
+  labels:
+    name: kafka-platform
+    component: infrastructure
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kafka-producers
+  labels:
+    name: kafka-producers
+    component: producers
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kafka-consumers
+  labels:
+    name: kafka-consumers
+    component: consumers

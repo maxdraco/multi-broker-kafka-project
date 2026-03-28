@@ -1,0 +1,139 @@
+---
+# Kafka Broker Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+  namespace: kafka-platform
+  labels:
+    app: kafka
+data:
+  # Cluster Configuration
+  cluster-id: "uE9zK2b7N1mR4vT8wL3xP2"
+
+  # Replication Settings
+  offsets-topic-replication-factor: "3"
+  transaction-state-log-replication-factor: "3"
+  transaction-state-log-min-isr: "2"
+  min-insync-replicas: "2"
+  default-replication-factor: "3"
+
+  # Topic Management
+  auto-create-topics: "false"
+
+  # Controller Configuration
+  controller-quorum-voters: "0@kafka-0.kafka-headless:9093,1@kafka-1.kafka-headless:9093,2@kafka-2.kafka-headless:9093"
+
+---
+# Producer Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: producer-config
+  namespace: kafka-producers
+  labels:
+    app: order-producer
+data:
+  # Kafka Connection
+  kafka-bootstrap-servers: "kafka-service.kafka-platform.svc.cluster.local:9092"
+
+  # Schema Registry
+  schema-registry-url: "http://schema-registry.kafka-platform.svc.cluster.local:8081"
+
+  # Topic Configuration
+  kafka-topic: "orders"
+  kafka-avro-topic: "orders-avro"
+
+  # Producer Service URL (for data generator job)
+  producer-service-url: "http://order-producer-service:8080"
+
+  # Producer Settings
+  producer-batch-size: "200"
+  producer-delay-ms: "500"
+  producer-invalid-count: "10"
+
+  # Spring Kafka Producer Properties (for reference in application)
+  spring-kafka-producer-acks: "all"
+  spring-kafka-producer-retries: "10"
+
+---
+# Consumer Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: consumer-config
+  namespace: kafka-consumers
+  labels:
+    app: order-consumer
+data:
+  # Kafka Connection
+  kafka-bootstrap-servers: "kafka-service.kafka-platform.svc.cluster.local:9092"
+
+  # Schema Registry
+  schema-registry-url: "http://schema-registry.kafka-platform.svc.cluster.local:8081"
+
+  # Consumer Group
+  kafka-group-id: "order-tracker"
+  kafka-offset-reset: "earliest"
+
+  # Topics
+  kafka-topic: "orders"
+  kafka-consumed-topic: "order-consumed"
+  kafka-dlt-topic: "orders.DLT"
+
+  # Consumer Settings
+  max-retry-attempts: "3"
+
+---
+# Topic Initialization Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: topic-init-config
+  namespace: kafka-platform
+  labels:
+    app: kafka-topic-init
+data:
+  kafka-bootstrap-server: "kafka-service:9092"
+
+  # Topic: orders
+  orders-topic-name: "orders"
+  orders-partitions: "3"
+  orders-replication-factor: "3"
+  orders-retention-ms: "604800000"  # 7 days
+  orders-min-insync-replicas: "2"
+
+  # Topic: orders-avro
+  orders-avro-topic-name: "orders-avro"
+  orders-avro-partitions: "3"
+  orders-avro-replication-factor: "3"
+  orders-avro-retention-ms: "604800000"  # 7 days
+  orders-avro-min-insync-replicas: "2"
+
+  # Topic: order-consumed
+  consumed-topic-name: "order-consumed"
+  consumed-partitions: "3"
+  consumed-replication-factor: "3"
+  consumed-retention-ms: "259200000"  # 3 days
+  consumed-min-insync-replicas: "2"
+
+  # Topic: orders.DLT
+  dlt-topic-name: "orders.DLT"
+  dlt-partitions: "3"
+  dlt-replication-factor: "3"
+  dlt-retention-ms: "2592000000"  # 30 days
+  dlt-min-insync-replicas: "2"
+
+---
+# Kafka UI Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-ui-config
+  namespace: kafka-platform
+  labels:
+    app: kafka-ui
+data:
+  clusters-0-name: "kafka-platform"
+  clusters-0-bootstrap-servers: "kafka-service:9092"
+  clusters-0-metrics-port: "9997"

@@ -1,0 +1,88 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: data-generator
+  namespace: kafka-producers
+  labels:
+    app: data-generator
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: data-generator
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: data-generator
+          image: curlimages/curl:latest
+          env:
+            - name: PRODUCER_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: producer-config
+                  key: producer-service-url
+            - name: BATCH_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: producer-config
+                  key: producer-batch-size
+            - name: DELAY_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: producer-config
+                  key: producer-delay-ms
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "=========================================="
+              echo "Data Generator Job"
+              echo "=========================================="
+              echo "Producer Service: $PRODUCER_SERVICE_URL"
+              echo "Batch Size: $BATCH_SIZE"
+              echo "Delay (ms): $DELAY_MS"
+              echo ""
+
+              echo "Waiting for producer service to be ready..."
+              for i in $(seq 1 30); do
+                if curl -s -f "$PRODUCER_SERVICE_URL/api/orders/health" > /dev/null 2>&1; then
+                  echo "Producer service is ready!"
+                  break
+                fi
+                echo "Attempt $i: Producer service not ready, waiting..."
+                sleep 2
+              done
+
+              echo ""
+              echo "Sending batch request to producer..."
+              echo ""
+
+              response=$(curl -X POST "$PRODUCER_SERVICE_URL/api/orders/batch" \
+                -H "Content-Type: application/json" \
+                -d "{\"count\": $BATCH_SIZE, \"delayMs\": $DELAY_MS}" \
+                -w "\nHTTP Status: %{http_code}\n" \
+                -s)
+
+              echo "$response"
+              echo ""
+
+              if echo "$response" | grep -q "HTTP Status: 200"; then
+                echo "=========================================="
+                echo "Data generation completed successfully!"
+                echo "=========================================="
+                exit 0
+              else
+                echo "=========================================="
+                echo "Data generation failed!"
+                echo "=========================================="
+                exit 1
+              fi
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"

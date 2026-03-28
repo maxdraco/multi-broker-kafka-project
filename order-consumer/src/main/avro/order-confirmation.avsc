@@ -1,0 +1,49 @@
+{
+  "type": "record",
+  "name": "OrderConfirmation",
+  "namespace": "com.kafka.platform.avro",
+  "doc": "Order confirmation event schema",
+  "fields": [
+    {
+      "name": "orderId",
+      "type": "string",
+      "doc": "Original order identifier"
+    },
+    {
+      "name": "user",
+      "type": "string",
+      "doc": "Username"
+    },
+    {
+      "name": "item",
+      "type": "string",
+      "doc": "Item name"
+    },
+    {
+      "name": "quantity",
+      "type": "int",
+      "doc": "Quantity ordered"
+    },
+    {
+      "name": "status",
+      "type": "string",
+      "doc": "Processing status",
+      "default": "consumed"
+    },
+    {
+      "name": "sourcePartition",
+      "type": "int",
+      "doc": "Source partition from orders topic"
+    },
+    {
+      "name": "sourceOffset",
+      "type": "long",
+      "doc": "Source offset from orders topic"
+    },
+    {
+      "name": "processedAt",
+      "type": "long",
+      "doc": "Processing timestamp in milliseconds since epoch"
+    }
+  ]
+}

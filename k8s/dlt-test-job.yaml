@@ -1,0 +1,81 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dlt-test-generator
+  namespace: kafka-producers
+  labels:
+    app: dlt-test-generator
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: dlt-test-generator
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: dlt-test
+          image: curlimages/curl:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "=========================================="
+              echo "DLT Test Data Generator"
+              echo "=========================================="
+              echo ""
+              echo "Sending invalid orders to producer service for DLT testing..."
+              echo "Producer URL: http://order-producer-service:8080"
+              echo ""
+
+              # Wait for producer service to be available
+              echo "Waiting for producer service to be ready..."
+              until curl -s -f http://order-producer-service:8080/api/orders/health > /dev/null 2>&1; do
+                echo "  Producer not ready yet, waiting..."
+                sleep 2
+              done
+              echo "✓ Producer service is ready"
+              echo ""
+
+              # Send invalid orders that will fail processing
+              echo "Sending 10 invalid orders (these will fail validation and go to DLT)..."
+              response=$(curl -s -X POST http://order-producer-service:8080/api/orders/invalid \
+                -H 'Content-Type: application/json' \
+                -d '{"count": 10}' \
+                -w "\nHTTP_CODE:%{http_code}")
+
+              http_code=$(echo "$response" | grep "HTTP_CODE" | cut -d: -f2)
+              body=$(echo "$response" | sed '/HTTP_CODE/d')
+
+              echo ""
+              echo "Response:"
+              echo "$body"
+              echo ""
+
+              if [ "$http_code" = "200" ]; then
+                echo "✓ Successfully submitted 10 invalid orders"
+                echo ""
+                echo "These orders will:"
+                echo "  1. Be consumed by the consumer service"
+                echo "  2. Fail validation (poison pill, negative quantity, null user)"
+                echo "  3. Retry up to 3 times (configured max-retry-attempts)"
+                echo "  4. Be routed to the DLT topic: orders.DLT"
+                echo ""
+                echo "To verify DLT routing, check:"
+                echo "  - Consumer logs: kubectl logs -n kafka-consumers -l app=order-consumer -f"
+                echo "  - DLT topic: kubectl exec -n kafka-platform kafka-0 -- kafka-console-consumer --bootstrap-server localhost:9092 --topic orders.DLT --from-beginning"
+                echo "  - Kafka UI at http://localhost:30080"
+                echo ""
+                exit 0
+              else
+                echo "✗ Failed to submit invalid orders (HTTP $http_code)"
+                exit 1
+              fi
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"

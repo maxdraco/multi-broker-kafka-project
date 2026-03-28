@@ -1,0 +1,22 @@
+# Maven build output
+target/
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS files
+.DS_Store
+
+# Build artifacts
+*.class
+
+# Local Kubernetes config
+*.kubeconfig
+
+#certificate
+zscaler.crt

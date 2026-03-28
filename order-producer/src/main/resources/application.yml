@@ -1,0 +1,65 @@
+spring:
+  application:
+    name: order-producer
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka-service:9092}
+
+    properties:
+      schema.registry.url: ${SCHEMA_REGISTRY_URL:http://schema-registry.kafka-platform.svc.cluster.local:8081}
+
+    producer:
+      # Idempotence settings for exactly-once delivery
+      acks: all  # All ISR brokers must acknowledge
+      retries: 10  # Retry up to 10 times on transient failures
+
+      # Key and value serializers
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+      # Batch settings for efficiency
+      batch-size: 16384
+
+      properties:
+        # Batch settings
+        linger.ms: 10
+
+        # Timeouts - Workaround for Spring Boot default delivery.timeout.ms (30000)
+        # Must satisfy: delivery.timeout.ms >= linger.ms + request.timeout.ms
+        # 30000 >= 10 + 10000 = 30000 >= 10010 ✓
+        request.timeout.ms: 10000
+        # Enable idempotence - deduplicates retried messages
+        enable.idempotence: true
+
+        # Maximum in-flight requests (safe with idempotence)
+        max.in.flight.requests.per.connection: 5
+
+        # Retry backoff
+        retry.backoff.ms: 500
+
+        # Compression
+        compression.type: snappy
+
+# Application-specific configuration
+app:
+  kafka:
+    topic: ${KAFKA_TOPIC:orders}
+
+server:
+  port: 8080
+
+# Actuator configuration for health checks
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.kafka.platform: DEBUG
+    org.apache.kafka: INFO
+    org.springframework.kafka: INFO

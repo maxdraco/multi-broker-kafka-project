@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-consumer
+  namespace: kafka-consumers
+  labels:
+    app: order-consumer
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: order-consumer
+  template:
+    metadata:
+      labels:
+        app: order-consumer
+    spec:
+      containers:
+        - name: order-consumer
+          image: order-consumer:1.0.0
+          imagePullPolicy: Never
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: consumer-config
+                  key: kafka-bootstrap-servers
+            - name: KAFKA_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: consumer-config
+                  key: kafka-topic
+            - name: KAFKA_CONSUMED_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: consumer-config
+                  key: kafka-consumed-topic
+            - name: KAFKA_DLT_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: consumer-config
+                  key: kafka-dlt-topic
+            - name: KAFKA_GROUP_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: consumer-config
+                  key: kafka-group-id
+            - name: KAFKA_OFFSET_RESET
+              valueFrom:
+                configMapKeyRef:
+                  name: consumer-config
+                  key: kafka-offset-reset
+            - name: MAX_RETRY_ATTEMPTS
+              valueFrom:
+                configMapKeyRef:
+                  name: consumer-config
+                  key: max-retry-attempts
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "300m"
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            failureThreshold: 3

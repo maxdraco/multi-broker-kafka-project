@@ -1,0 +1,197 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-headless
+  namespace: kafka-platform
+  labels:
+    app: kafka
+spec:
+  clusterIP: None  # Headless service for stable DNS per pod
+  publishNotReadyAddresses: true  # Publish DNS even for non-ready pods (required for KRaft)
+  selector:
+    app: kafka
+  ports:
+    - name: plaintext
+      port: 9092
+      targetPort: 9092
+    - name: controller
+      port: 9093
+      targetPort: 9093
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-service
+  namespace: kafka-platform
+  labels:
+    app: kafka
+spec:
+  type: ClusterIP
+  selector:
+    app: kafka
+  ports:
+    - name: plaintext
+      port: 9092
+      targetPort: 9092
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: kafka-platform
+  labels:
+    app: kafka
+spec:
+  serviceName: kafka-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+        - name: kafka
+          image: confluentinc/cp-kafka:latest
+          ports:
+            - containerPort: 9092
+              name: plaintext
+            - containerPort: 9093
+              name: controller
+          env:
+            # KRaft mode
+            - name: KAFKA_KRAFT_MODE
+              value: "true"
+
+            # Cluster ID - from ConfigMap
+            - name: CLUSTER_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: cluster-id
+
+            # Pod name for dynamic configuration
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+            # Process roles - each broker is both broker and controller
+            - name: KAFKA_PROCESS_ROLES
+              value: "broker,controller"
+
+            # Controller quorum voters - from ConfigMap
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: controller-quorum-voters
+
+            # Listeners
+            - name: KAFKA_LISTENERS
+              value: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://$(POD_NAME).kafka-headless.kafka-platform.svc.cluster.local:9092"
+
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "PLAINTEXT"
+
+            # Log directories
+            - name: KAFKA_LOG_DIRS
+              value: "/var/lib/kafka/data"
+
+            # Disable auto-create topics - from ConfigMap
+            - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: auto-create-topics
+
+            # Replication factors from ConfigMap
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: offsets-topic-replication-factor
+
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: transaction-state-log-replication-factor
+
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: transaction-state-log-min-isr
+
+            - name: KAFKA_MIN_INSYNC_REPLICAS
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: min-insync-replicas
+
+            # Default replication factor from ConfigMap
+            - name: KAFKA_DEFAULT_REPLICATION_FACTOR
+              valueFrom:
+                configMapKeyRef:
+                  name: kafka-config
+                  key: default-replication-factor
+
+          command:
+            - /bin/bash
+            - -c
+            - |
+              # Derive NODE_ID from pod ordinal (kafka-0 → 0, kafka-1 → 1, etc.)
+              export KAFKA_NODE_ID=${POD_NAME##*-}
+              echo "Starting Kafka broker with NODE_ID=$KAFKA_NODE_ID"
+              exec /etc/confluent/docker/run
+
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /var/lib/kafka/data
+
+          livenessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 6
+
+          readinessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            failureThreshold: 5
+
+  volumeClaimTemplates:
+    - metadata:
+        name: kafka-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

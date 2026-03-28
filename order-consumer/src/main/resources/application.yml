@@ -1,0 +1,76 @@
+spring:
+  application:
+    name: order-consumer
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka-service:9092}
+
+    consumer:
+      # Consumer group configuration
+      group-id: ${KAFKA_GROUP_ID:order-tracker}
+
+      # Disable auto-commit for manual offset management
+      enable-auto-commit: false
+
+      # Start from earliest if no offset exists
+      auto-offset-reset: ${KAFKA_OFFSET_RESET:earliest}
+
+      # Key and value deserializers
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+
+      properties:
+        # Allow deserialization of specific types
+        spring.json.trusted.packages: "com.kafka.platform.*"
+
+        # Heartbeat and session timeout
+        session.timeout.ms: 10000
+        heartbeat.interval.ms: 3000
+
+        # Max poll settings
+        max.poll.records: 100
+        max.poll.interval.ms: 300000
+
+    producer:
+      # Producer for confirmation topic
+      acks: all
+      retries: 3
+
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+      properties:
+        enable.idempotence: true
+
+    listener:
+      # Manual acknowledgment mode
+      ack-mode: manual
+
+# Application-specific configuration
+app:
+  kafka:
+    topic: ${KAFKA_TOPIC:orders}
+    consumed-topic: ${KAFKA_CONSUMED_TOPIC:order-consumed}
+    dlt-topic: ${KAFKA_DLT_TOPIC:orders.DLT}
+
+  consumer:
+    # Max retry attempts before sending to DLT
+    max-retry-attempts: 3
+
+# Actuator configuration for health checks
+management:
+  server:
+    port: 8080
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.kafka.platform: DEBUG
+    org.apache.kafka: INFO
+    org.springframework.kafka: INFO
